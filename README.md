@@ -46,7 +46,7 @@ Download the package `.tgz` from the project's release and install it into a
 Web-capable profile. For example:
 
 ```sh
-dsh plugin --profile web add ./dsh-onto-space-panel-1.2.0.tgz
+dsh plugin --profile web add ./dsh-onto-space-panel-1.2.1.tgz
 ```
 
 Release downloads: https://github.com/hope4b/dsh-onto-space-panel/releases
@@ -55,7 +55,7 @@ You can also install the tagged GitHub source, which already contains the built
 browser entry point and has no install-time build script:
 
 ```sh
-dsh plugin --profile web add github:hope4b/dsh-onto-space-panel#v1.2.0
+dsh plugin --profile web add github:hope4b/dsh-onto-space-panel#v1.2.1
 ```
 
 In Desktop, use **Plugins** to install the downloaded bundle where supported by
@@ -78,6 +78,8 @@ the `×` next to its context label.
 1. Install the plugin and restart Harness.
 2. Click **Onto → Подключить** above the composer.
 3. Enter your MCP endpoint URL and personal API key, then press **Подключить**.
+   The key field expects only the value. A pasted `X-Onto-Api-Key: value` line
+   is accepted too: the plugin removes the header name before sending or storing it.
 4. The plugin checks access with `list_available_realms` before saving. After
    success, select a space from the list. An empty list means the connection
    works but no accessible spaces were returned.

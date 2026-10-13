@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createConnectionManager, validateEndpoint, connectionError } from '../connection.mjs';
-import { createSelectionStore } from '../index.mjs';
+import { createConnectionManager, validateEndpoint, connectionError, normalizeApiKey, readRealmResponse } from '../connection.mjs';
+import { createSelectionStore, normalizeRealms } from '../index.mjs';
 import { createContextStore } from '../panel.mjs';
 
 function fixture() {
@@ -21,6 +21,16 @@ function fixture() {
     reject: value => rejected = value, failMount: value => failMount = value,
     close: () => rmSync(directory, { recursive: true, force: true }) };
 }
+test('accepts a pasted Onto header and explains authentication errors without exposing server text', () => {
+  assert.equal(normalizeApiKey(' X-Onto-Api-Key: synthetic-key '), 'synthetic-key');
+  assert.equal(normalizeApiKey(' synthetic-key '), 'synthetic-key');
+  const response = { content: [{ type: 'text', text: 'Error: invalid API key: private-secret' }], isError: false };
+  let rejected;
+  try { readRealmResponse(response, normalizeRealms); } catch (error) { rejected = error; }
+  assert.equal(rejected.code, 'ONTO_AUTH_REJECTED');
+  assert.ok(!connectionError(rejected).includes('private-secret'));
+  assert.equal(readRealmResponse({ structuredContent: { realms: [{ realm_id: 'example', name: 'Forbidden topics' }] } }, normalizeRealms)[0].name, 'Forbidden topics');
+});
 test('rejects unsafe endpoints and redacts remote errors', () => {
   assert.equal(validateEndpoint('https://example.org/mcp'), 'https://example.org/mcp');
   assert.equal(validateEndpoint('http://localhost:1234/mcp'), 'http://localhost:1234/mcp');

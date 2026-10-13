@@ -15,10 +15,31 @@ export function connectionError(error) {
   // Never reflect server text, request headers or submitted credentials into the UI.
   const code = error?.code ?? error?.status ?? error?.statusCode;
   const message = String(error?.message || '');
+  if (code === 'ONTO_AUTH_REJECTED') return 'Onto отклонил API-ключ. Проверь ключ и права доступа. Вставь только значение ключа, без названия заголовка.';
+  if (code === 'ONTO_REALM_FORMAT') return 'Onto ответил, но формат списка пространств не распознан. Код: ONTO_REALM_FORMAT.';
   if ([401, 403].includes(code) || /\b(401|403)\b/.test(message)) return 'Сервер отклонил доступ. Проверь API-ключ и права в Onto.';
   if (code === 404 || /\b404\b/.test(message)) return 'MCP-сервер не найден. Проверь адрес: нужен MCP endpoint, а не главная страница Onto.';
   if (error?.name === 'AbortError' || error?.name === 'TimeoutError' || /timeout|timed out/i.test(message)) return 'Сервер не ответил вовремя. Проверь адрес, сеть и VPN, затем повтори.';
   return 'Не удалось подключиться к Onto. Проверь адрес MCP-сервера, ключ и доступ к сети.';
+}
+
+export function normalizeApiKey(value) {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  const header = trimmed.match(/^X-Onto-Api-Key[ \t]*:[ \t]*(.*)$/i);
+  return header ? header[1].trim() : trimmed;
+}
+
+export function readRealmResponse(result, normalizeRealms) {
+  if (!result.isError) {
+    try { return normalizeRealms(result); } catch { /* Some Onto errors are returned as successful MCP text. */ }
+  }
+  const text = [...(result.content ?? []).filter(block => block.type === 'text').map(block => block.text),
+    typeof result.structuredContent?.result === 'string' ? result.structuredContent.result : ''].join('\n');
+  if (/unauthorized|forbidden|invalid.*(?:api.?key|token)|(?:api.?key|token).*(?:invalid|missing|expired)|access denied/i.test(text)) {
+    throw Object.assign(new Error('Onto rejected authentication'), { code: 'ONTO_AUTH_REJECTED' });
+  }
+  throw Object.assign(new Error('Onto realm response is unavailable'), { code: 'ONTO_REALM_FORMAT' });
 }
 
 export function createConnectionManager({ directory, profile, credentials, external, probe, mount, invalidate = () => {} }) {
@@ -64,7 +85,7 @@ export function createConnectionManager({ directory, profile, credentials, exter
       : 'Хранилище ключей Harness недоступно или доступно только для чтения.');
     const url = validateEndpoint(body.url);
     const previousSecret = await credentials.resolve(ref);
-    const key = body.apiKey || (saved?.url === url ? previousSecret?.value : '');
+    const key = normalizeApiKey(body.apiKey) || (saved?.url === url ? previousSecret?.value : '');
     if (typeof key !== 'string' || !key.trim() || key.length > 8192 || /[\r\n]/.test(key)) throw new Error('Введи API-ключ Onto.');
     if (busy) throw new Error('Подключение уже проверяется. Дождись результата.');
     busy = true;
@@ -126,15 +147,14 @@ export function installConnection(ctx, directory, normalizeRealms, invalidate) {
     external: () => managedFiber ? null : external(), invalidate,
     async probe(url, key, signal) {
       const { Client, StreamableHTTPClientTransport } = await importer.import('@modelcontextprotocol/client');
-      const client = new Client({ name: 'onto-space-panel-setup', version: '1.2.0' }, { capabilities: {}, versionNegotiation: { mode: 'auto' } });
+      const client = new Client({ name: 'onto-space-panel-setup', version: '1.2.1' }, { capabilities: {}, versionNegotiation: { mode: 'auto' } });
       const abort = AbortSignal.any([AbortSignal.timeout(20000), ...(signal ? [signal] : [])]);
       const transport = new StreamableHTTPClientTransport(new URL(url), { requestInit: {
         headers: { 'X-Onto-Api-Key': key }, redirect: 'error', signal: abort } });
       try {
         await client.connect(transport, { signal: abort });
         const result = await client.callTool({ name: 'list_available_realms', arguments: {} }, { signal: abort, timeout: 20000 });
-        if (result.isError) throw new Error('Onto tool rejected request');
-        return normalizeRealms(result);
+        return readRealmResponse(result, normalizeRealms);
       } finally { await client.close().catch(() => {}); }
     },
     async mount(url, key) {

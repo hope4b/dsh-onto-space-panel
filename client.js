@@ -50,7 +50,7 @@ window.__ModuleLoader__.load({
           h('p', null, 'Укажи адрес MCP-сервера и свой ключ. После проверки выбери пространство для этого чата.'),
           h('label', { htmlFor: id + '-url' }, 'Адрес MCP-сервера'),
           h('input', { id: id + '-url', type: 'url', required: true, autoFocus: true, placeholder: 'https://example.org/mcp', autoComplete: 'off', value: url, disabled: busy, onChange: e => setUrl(e.target.value) }),
-          h('label', { htmlFor: id + '-key' }, 'API-ключ'),
+          h('label', { htmlFor: id + '-key' }, 'API-ключ · только значение'),
           h('input', { id: id + '-key', type: 'password', required: !connection.keyConfigured || url !== connection.url, placeholder: connection.keyConfigured && url === connection.url ? 'Сохранён · оставь пустым, чтобы использовать' : 'Ключ доступа к Onto', autoComplete: 'off', value: key, disabled: busy, onChange: e => setKey(e.target.value) }),
           h('button', { type: 'submit', className: 'onto-connect', disabled: busy }, busy ? 'Проверяю подключение…' : 'Подключить'),
           h('small', null, 'Ключ хранится локально в хранилище Harness и не передаётся модели. Подключение общее для профиля.')),

@@ -1,6 +1,6 @@
 {
   "name": "dsh-onto-space-panel",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Onto space navigation, resident agents and explicit memory context for DeepSeek Harness.",
   "type": "module",
   "main": "./index.mjs",
