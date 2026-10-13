@@ -1,6 +1,6 @@
 {
   "name": "dsh-onto-space-panel",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Onto space navigation, resident agents and explicit memory context for DeepSeek Harness.",
   "type": "module",
   "main": "./index.mjs",
@@ -15,7 +15,9 @@
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "connection.mjs",
+    "examples/onto-mcp.patch.yml"
   ],
   "engines": {
     "node": ">=22"
@@ -29,7 +31,7 @@
     "agent-memory"
   ],
   "scripts": {
-    "check": "node --check index.mjs && node --check panel.mjs && node --check client.js",
+    "check": "node --check index.mjs && node --check panel.mjs && node --check connection.mjs && node --check client.js",
     "test": "node --test test/*.test.mjs"
   },
   "publishConfig": {

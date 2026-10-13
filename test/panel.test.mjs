@@ -18,6 +18,7 @@ test('parses structured data appended to a human-readable MCP response', () => {
   assert.throws(() => unwrap({ structuredContent: { result: 'Memory artifact data:\n{broken}' } }));
   assert.equal(parseNamedList('1. Example\n   UUID: ' + memoryId).length, 1);
   assert.equal(normalizeRealms({ structuredContent: { realms: [{ realm_id: realmId, name: 'Example' }] } })[0].realm_id, realmId);
+  assert.equal(normalizeRealms({ content: [{ type: 'text', text: 'Available realms (1):\n\n1. Example\n   ID: ' + realmId }] })[0].realm_id, realmId);
 });
 
 test('context persists without leaking into another chat or realm', () => {

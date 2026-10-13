@@ -3,16 +3,17 @@ import { join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { installPanel, compactContext } from './panel.mjs';
+import { installConnection } from './connection.mjs';
 
 export const name = 'onto-space-panel';
-export const inject = ['tools', 'connection', 'systemPrompt'];
+export const inject = ['tools', 'connection', 'systemPrompt', 'loader'];
 const PREFIX = 'mcp__onto__';
 
 export function normalizeRealms(result) {
   const roots = [result.structuredContent];
   for (const block of result.content ?? []) {
     if (block.type === 'text') {
-      try { roots.push(JSON.parse(block.text)); } catch { /* Non-JSON prose is not a realm list. */ }
+      try { roots.push(JSON.parse(block.text)); } catch { roots.push(block.text); }
     }
   }
   function find(value, depth = 0) {
@@ -49,7 +50,7 @@ export function normalizeRealms(result) {
   throw new Error('Onto вернул список в неизвестном формате. Выбор не изменён.');
 }
 
-export function createSelectionStore(directory) {
+export function createSelectionStore(directory, identity = () => '') {
   const cache = new Map();
   function pathFor(sessionId) {
     if (typeof sessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,120}$/.test(sessionId)) throw new Error('Не удалось определить чат.');
@@ -58,17 +59,17 @@ export function createSelectionStore(directory) {
   return {
     get(sessionId) {
       const path = pathFor(sessionId);
-      if (cache.has(sessionId)) return cache.get(sessionId);
+      if (cache.has(sessionId)) { const record = cache.get(sessionId); return record && (record.connection_id || '') === identity() ? record : null; }
       let value = null;
       try { value = JSON.parse(readFileSync(path, 'utf8')); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
       if (value !== null && (typeof value.realm_id !== 'string' || typeof value.name !== 'string')) throw new Error('Сохранённый выбор пространства повреждён.');
       cache.set(sessionId, value);
-      return value;
+      return value && (value.connection_id || '') === identity() ? value : null;
     },
     set(sessionId, realm) {
       const path = pathFor(sessionId);
-      const record = realm ? { realm_id: realm.realm_id, name: realm.name, selected_at: new Date().toISOString() } : null;
+      const record = realm ? { realm_id: realm.realm_id, name: realm.name, connection_id: identity(), selected_at: new Date().toISOString() } : null;
       mkdirSync(directory, { recursive: true });
       const temp = path + '.' + randomUUID() + '.tmp';
       writeFileSync(temp, JSON.stringify(record, null, 2) + '\n', 'utf8');
@@ -79,29 +80,41 @@ export function createSelectionStore(directory) {
   };
 }
 
-export function apply(ctx) {
+export async function apply(ctx) {
   const directory = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'storages', 'onto-space-selections');
-  const selections = createSelectionStore(directory);
+  let connection;
+  const selections = createSelectionStore(directory, () => connection?.identity() || '');
   const panel = installPanel(ctx, selections, join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'storages'));
   let realms = null;
   let fetchedAt = 0;
   let pending = null;
+  let connectionGeneration = 0;
+  connection = installConnection(ctx, join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'storages', 'onto-connections'), normalizeRealms,
+    () => { connectionGeneration++; realms = null; fetchedAt = 0; pending = null; });
+  await connection.restore();
   async function list(signal, agent, refresh = false) {
     if (!refresh && realms && Date.now() - fetchedAt < 60000) return realms;
-    if (!pending) pending = (async () => {
+    if (!pending) {
+      const generation = connectionGeneration;
+      const task = (async () => {
       const tool = ctx.tools.get(PREFIX + 'list_available_realms', agent);
       if (!tool) throw new Error('Onto ещё не подключён. Повтори через несколько секунд.');
       const result = await tool.execute({}, { signal, agent });
       const updated = normalizeRealms(result);
+      if (generation !== connectionGeneration) throw new Error('Подключение Onto изменилось. Обнови список пространств.');
       realms = updated;
       fetchedAt = Date.now();
       return updated;
-    })().finally(() => { pending = null; });
+      })().finally(() => { if (pending === task) pending = null; });
+      pending = task;
+    }
     return pending;
   }
   async function select(sessionId, realmId, signal, agent) {
     if (!realmId) return selections.set(sessionId, null);
+    const generation = connectionGeneration;
     const available = await list(signal, agent, true);
+    if (generation !== connectionGeneration) throw new Error('Подключение Onto изменилось. Выбери пространство заново.');
     const realm = available.find(row => row.realm_id === realmId);
     if (!realm) throw new Error('Это пространство недоступно. Обнови список и выбери другое.');
     return selections.set(sessionId, realm);
@@ -157,7 +170,7 @@ export function apply(ctx) {
         const body = await request.json();
         // Validate session key for every operation, including list.
         const selected = selections.get(body.sessionId);
-        if (body.action === 'get') return Response.json({ selected, context: compactContext(panel.contexts.get(body.sessionId)) });
+        if (body.action === 'get') return Response.json({ selected, context: compactContext(panel.contexts.get(body.sessionId)), connection: await connection.status() });
         if (body.action === 'list') return Response.json({ realms: await list(request.signal, undefined, body.refresh === true), selected });
         if (body.action === 'set') return Response.json({ selected: await select(body.sessionId, body.realm_id, request.signal) });
         return Response.json({ error: 'Неизвестное действие.' }, { status: 400 });

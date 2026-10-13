@@ -3,6 +3,59 @@ window.__ModuleLoader__.load({
   factory: require => {
     const React = require('react');
     const h = React.createElement;
+    async function connectionApi(action, extra = {}, signal) {
+      const response = await fetch('/api/onto-connection', { method: 'POST', credentials: 'same-origin', signal,
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...extra }) });
+      if (response.status === 401) throw new Error('Соединение с Harness потеряно. Перезагрузи окно.');
+      const value = await response.json();
+      if (!response.ok || value.error) throw new Error(value.error || 'Не удалось настроить подключение.');
+      return value;
+    }
+    const connectionStyles = `.onto-onboarding{position:fixed!important;top:50%;left:50%;bottom:auto!important;transform:translate(-50%,-50%);width:min(380px,calc(100vw - 40px))!important;max-height:85vh!important;padding:22px!important;box-shadow:0 0 0 100vmax #0008,0 16px 60px #0008!important;z-index:100!important}.onto-setup{font-size:13px;line-height:1.5}.onto-setup h3{margin:0 0 5px;font-size:16px;font-weight:500}.onto-setup p{color:var(--dsw-alias-label-tertiary);margin:0 0 16px}.onto-setup label{display:block;margin:12px 0 5px;font-size:12px}.onto-setup input{box-sizing:border-box;width:100%;border:1px solid var(--dsw-alias-border-l1,#444);border-radius:8px;padding:9px 10px;background:transparent;color:inherit;font:inherit}.onto-setup input:focus-visible{outline:2px solid #6d9fff;outline-offset:2px}.onto-setup .onto-connect{display:block;width:100%;margin-top:16px;padding:10px;border:0;border-radius:8px;background:var(--dsw-alias-state-business-primary,#9cbcff);color:var(--dsw-alias-bg-base,#141416);font:inherit;cursor:pointer}.onto-setup button:disabled{opacity:.5;cursor:wait}.onto-setup small{display:block;margin-top:10px;color:var(--dsw-alias-label-tertiary);font-size:11px}.onto-setup-status{border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:12px}.onto-setup-url{overflow-wrap:anywhere;margin-top:5px;color:var(--dsw-alias-label-tertiary)}.onto-popup{max-height:min(520px,65vh);overflow:auto}.onto-setup-link{border:0;background:transparent;color:inherit;font:inherit;cursor:pointer}.onto-connection-toolbar{display:flex;justify-content:flex-end;margin-bottom:12px}`;
+    function ConnectionSetup({ onConnected, onBack }) {
+      const [connection, setConnection] = React.useState(null);
+      const [url, setUrl] = React.useState('');
+      const [key, setKey] = React.useState('');
+      const [busy, setBusy] = React.useState(false);
+      const [error, setError] = React.useState('');
+      const id = React.useId();
+      const request = React.useRef(null);
+      React.useEffect(() => {
+        const abort = new AbortController(); request.current = abort;
+        connectionApi('status', {}, abort.signal).then(value => {
+          setConnection(value.connection); setUrl(value.connection.url); setError(value.connection.error || '');
+        }).catch(e => { if (!abort.signal.aborted) setError(e.message); });
+        return () => { abort.abort(); request.current = null; };
+      }, []);
+      async function submit(event) {
+        event.preventDefault(); if (busy) return;
+        setBusy(true); setError('');
+        const abort = request.current;
+        try {
+          const data = await connectionApi('connect', { url, apiKey: key }, abort?.signal);
+          if (!abort?.signal.aborted) { setKey(''); setConnection(data.connection); onConnected(data); }
+        } catch (e) { if (!abort?.signal.aborted) setError(e.message); }
+        finally { if (!abort?.signal.aborted) setBusy(false); }
+      }
+      return h('div', { className: 'onto-setup' }, h('style', null, connectionStyles),
+        h('div', { className: 'onto-heading' }, h('h3', null, connection?.configured ? 'Подключение Onto' : 'Подключить Onto'),
+          onBack ? h('button', { type: 'button', className: 'onto-setup-link', disabled: busy, onClick: onBack }, 'Назад') : null),
+        !connection ? h('p', { role: 'status' }, error ? 'Проверка подключения не завершена.' : 'Проверяю подключение…') :
+        connection.source === 'harness' ? h('div', { className: 'onto-setup-status' },
+          h('strong', null, connection.connected ? 'Onto уже подключён' : 'Подключение настроено в Harness'),
+          h('div', { className: 'onto-setup-url' }, connection.url),
+          h('small', null, 'Панель использует это подключение. Адрес и ключ меняются в настройках Harness.')) :
+        !connection.canConfigure ? h('p', null, 'Для настройки нужно доступное для записи хранилище ключей Harness.') :
+        h('form', { onSubmit: submit },
+          h('p', null, 'Укажи адрес MCP-сервера и свой ключ. После проверки выбери пространство для этого чата.'),
+          h('label', { htmlFor: id + '-url' }, 'Адрес MCP-сервера'),
+          h('input', { id: id + '-url', type: 'url', required: true, autoFocus: true, placeholder: 'https://example.org/mcp', autoComplete: 'off', value: url, disabled: busy, onChange: e => setUrl(e.target.value) }),
+          h('label', { htmlFor: id + '-key' }, 'API-ключ'),
+          h('input', { id: id + '-key', type: 'password', required: !connection.keyConfigured || url !== connection.url, placeholder: connection.keyConfigured && url === connection.url ? 'Сохранён · оставь пустым, чтобы использовать' : 'Ключ доступа к Onto', autoComplete: 'off', value: key, disabled: busy, onChange: e => setKey(e.target.value) }),
+          h('button', { type: 'submit', className: 'onto-connect', disabled: busy }, busy ? 'Проверяю подключение…' : 'Подключить'),
+          h('small', null, 'Ключ хранится локально в хранилище Harness и не передаётся модели. Подключение общее для профиля.')),
+        error ? h('div', { className: 'onto-error', role: 'alert' }, error) : null);
+    }
     async function api(sessionId, action, extra = {}, signal) {
       const response = await fetch('/api/onto-space', {
         method: 'POST', credentials: 'same-origin', signal,
@@ -18,6 +71,8 @@ window.__ModuleLoader__.load({
     function Picker({ ontoSessionId: sessionId, openPanel }) {
       const [selected, setSelected] = React.useState(null);
       const [context, setContext] = React.useState(null);
+      const [connection, setConnection] = React.useState(null);
+      const [setup, setSetup] = React.useState(false);
       const [removing, setRemoving] = React.useState(false);
       const [open, setOpen] = React.useState(false);
       const [realms, setRealms] = React.useState([]);
@@ -33,7 +88,7 @@ window.__ModuleLoader__.load({
         const controller = new AbortController();
         setSelected(null); setContext(null); setRemoving(false); setOpen(false); setQuery(''); setError(''); setRealms([]); setLoading(false); setSaving(false);
         const sync = async () => {
-          try { const data = await api(sessionId, 'get', {}, controller.signal); if (alive) { setSelected(data.selected); setContext(data.context); } }
+          try { const data = await api(sessionId, 'get', {}, controller.signal); if (alive) { setSelected(data.selected); setContext(data.context); setConnection(data.connection); } }
           catch (e) { if (alive && e.name !== 'AbortError') setError(e.message); }
         };
         sync();
@@ -43,7 +98,17 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         if (!open) return;
         const click = event => { if (!root.current?.contains(event.target)) setOpen(false); };
-        const key = event => { if (event.key === 'Escape') { setOpen(false); root.current?.querySelector('.onto-trigger')?.focus(); } };
+        const key = event => {
+          if (event.key === 'Escape') { setOpen(false); root.current?.querySelector('.onto-trigger')?.focus(); }
+          if (event.key === 'Tab') {
+            const modal = root.current?.querySelector('.onto-onboarding');
+            const fields = modal ? [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled)')] : [];
+            if (!fields.length) return;
+            const first = fields[0], last = fields[fields.length - 1];
+            if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+          }
+        };
         document.addEventListener('pointerdown', click); document.addEventListener('keydown', key);
         return () => { document.removeEventListener('pointerdown', click); document.removeEventListener('keydown', key); };
       }, [open]);
@@ -65,19 +130,21 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'onto-picker', ref: root },
         h('style', null, styles + panelStyles + ".onto-picker{margin:0 var(--dsh-composer-side-clearance,20px) 4px;min-width:0}.onto-hub{display:inline-flex;align-items:center;max-width:100%;border:1px solid var(--dsw-alias-border-l1,#36363e);border-radius:10px;background:transparent}.onto-hub .onto-trigger{border:0;border-radius:9px 0 0 9px;background:transparent;padding:6px 10px;gap:8px;min-width:0}.onto-hub .onto-trigger:hover,.onto-open-panel:hover{background:var(--dsw-alias-interactive-bg-hover,#28282d)}.onto-name{max-width:240px}.onto-brand{font-size:12px;flex:none}.onto-chevron{color:var(--dsw-alias-label-tertiary);flex:none}.onto-hub .onto-open-panel{align-self:stretch;padding:6px 10px;background:transparent;border:0;border-left:1px solid var(--dsw-alias-border-l1,#36363e);border-radius:0 9px 9px 0;color:var(--dsw-alias-label-tertiary);font-size:12px;cursor:pointer;flex:none}.onto-picker .onto-space-context-chips{margin:7px 0 0;gap:5px}.onto-picker .onto-space-context-chip{padding:2px 6px;border:0;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:12px}.onto-picker .onto-space-context-chip span{max-width:175px}.onto-picker .onto-space-context-chip+.onto-space-context-chip{border-left:1px solid var(--dsw-alias-border-l1);border-radius:0}.onto-picker .onto-space-context-chips:empty{display:none}@media(max-width:420px){.onto-name{max-width:170px}.onto-picker .onto-space-context-chip span{max-width:140px}}"),
         h('div', { className: 'onto-hub' },
-          h('button', { type: 'button', className: 'onto-trigger', 'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-label': 'Выбрать пространство Onto: ' + (selected?.name || 'не выбрано'), onClick: () => { setOpen(!open); if (!open) load(); } },
-            h('span', { className: 'onto-brand' }, 'Onto'), h('span', { className: 'onto-name' }, selected?.name || 'Выбрать пространство'), h('span', { className: 'onto-chevron', 'aria-hidden': true }, '▾')),
+          h('button', { type: 'button', className: 'onto-trigger', 'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-label': 'Выбрать пространство Onto: ' + (selected?.name || 'не выбрано'), onClick: () => { setOpen(!open); setSetup(false); if (!open && connection?.configured) load(); } },
+            h('span', { className: 'onto-brand' }, 'Onto'), h('span', { className: 'onto-name' }, connection?.source === 'none' ? 'Подключить' : selected?.name || 'Выбрать пространство'), h('span', { className: 'onto-chevron', 'aria-hidden': true }, '▾')),
           h('button', { type: 'button', className: 'onto-open-panel', onClick: openPanel, 'aria-label': 'Открыть панель пространства Onto' }, 'Обзор')),
         h(ContextChips, {context,disabled:removing,onRemove:async item=>{setRemoving(true);try{const data=await panelApi(sessionId,'remove',{kind:item.kind,id:item.id,revision:context.revision,realm_id:selected?.realm_id});setContext(data.context);}catch(e){setError(e.message);}finally{setRemoving(false);}}}),
         !open && error ? h('div', { className: 'onto-error', role: 'status' }, error) : null,
-        open ? h('div', { className: 'onto-popup', role: 'dialog', 'aria-label': 'Пространство Onto' },
+        open ? h('div', { className: 'onto-popup' + (!connection || connection.source === 'none' || setup ? ' onto-onboarding' : ''), role: 'dialog', 'aria-modal': !connection || connection.source === 'none' || setup ? true : undefined, 'aria-label': 'Пространство Onto' },
+          !connection || connection.source === 'none' || setup ? h(ConnectionSetup, { onBack: () => { if (connection?.configured) { setSetup(false); load(true); } else setOpen(false); },
+            onConnected: data => { setConnection(data.connection); setRealms(data.realms); setSetup(false); setError(''); } }) : h(React.Fragment, null,
           h('div', { className: 'onto-heading' }, h('strong', null, 'Пространство Onto'), h('button', { type: 'button', disabled: loading || saving, onClick: () => load(true), 'aria-label': 'Обновить список пространств' }, 'Обновить')),
           h('input', { className: 'onto-search', placeholder: 'Найти пространство', 'aria-label': 'Найти пространство', value: query, autoFocus: true, onChange: event => setQuery(event.target.value) }),
           error ? h('div', { className: 'onto-error', role: 'alert' }, error, h('button', { type: 'button', onClick: () => load(true), disabled: loading }, 'Повторить')) : null,
           loading ? h('div', { className: 'onto-hint', role: 'status' }, 'Загружаю пространства…') : h('div', { className: 'onto-list', role: 'listbox', 'aria-label': 'Доступные пространства' },
             ...shown.map(row => h('button', { key: row.realm_id, type: 'button', className: 'onto-choice', role: 'option', 'aria-selected': selected?.realm_id === row.realm_id, disabled: saving, onClick: () => choose(row.realm_id) }, h('span', null, row.name), selected?.realm_id === row.realm_id ? h('span', { 'aria-hidden': true }, '✓') : null)),
             !shown.length && !error ? h('div', { className: 'onto-hint' }, realms.length ? 'Ничего не найдено' : 'Нет доступных пространств') : null),
-          h('div', { className: 'onto-footer' }, h('span', null, saving ? 'Сохраняю…' : 'Выбор только для этого чата'), selected ? h('button', { type: 'button', disabled: saving, onClick: () => choose(null) }, 'Сбросить') : null)) : null);
+          h('div', { className: 'onto-footer' }, h('span', null, saving ? 'Сохраняю…' : 'Выбор только для этого чата'), h('button', { type: 'button', disabled: saving, onClick: () => setSetup(true) }, 'Подключение'), selected ? h('button', { type: 'button', disabled: saving, onClick: () => choose(null) }, 'Сбросить') : null))) : null);
     }
     const panelStyles = `.onto-space-panel{color:var(--dsw-alias-label-primary);font:inherit;height:100%;overflow:auto;padding:18px;box-sizing:border-box;overflow-wrap:anywhere}.onto-space-panel *{box-sizing:border-box}.onto-space-panel button,.onto-space-panel input{font:inherit;color:inherit}.onto-space-panel button{cursor:pointer}.onto-space-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.onto-space-head h2{font-size:18px;line-height:1.4;font-weight:500;margin:0 0 5px}.onto-space-muted{font-size:12px;color:var(--dsw-alias-label-tertiary)}.onto-space-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--dsw-alias-border-l1);margin:18px 0}.onto-space-tab{background:transparent;border:0;border-bottom:2px solid transparent;padding:10px 6px}.onto-space-tab[aria-selected=true]{border-bottom-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}.onto-space-button{border:1px solid var(--dsw-alias-border-l1);border-radius:7px;background:transparent;padding:7px 10px;display:inline-flex;gap:5px;align-items:center;font-size:12px!important}.onto-space-button:hover{background:var(--dsw-alias-interactive-bg-hover)}.onto-space-button:disabled{opacity:.5;cursor:wait}.onto-space-button.primary{background:var(--dsw-alias-state-business-primary);border-color:transparent;color:var(--dsw-alias-bg-base)}.onto-space-section{margin-bottom:20px}.onto-space-section h3{font-size:14px;font-weight:500;margin:0 0 10px}.onto-space-declaration{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:14px;margin-bottom:16px}.onto-space-declaration p{font-size:13px;margin:8px 0 12px}.onto-space-row{padding:13px 0;border-bottom:1px solid var(--dsw-alias-border-l1)}.onto-space-row h4{margin:0 0 5px;font-weight:500;font-size:13px}.onto-space-row p{font-size:12px;color:var(--dsw-alias-label-tertiary);margin:5px 0 8px}.onto-space-actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.onto-space-error{color:var(--dsw-alias-state-error-primary);font-size:13px;margin:12px 0}.onto-space-empty{font-size:13px;color:var(--dsw-alias-label-tertiary);padding:14px 0}.onto-space-preview{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:14px;margin-bottom:18px}.onto-space-preview h3{font-size:14px;margin:0 0 8px;font-weight:500}.onto-space-preview pre{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.65;font-family:inherit;margin:12px 0 0;max-height:55vh;overflow:auto}.onto-space-field{width:100%;background:transparent;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:8px 10px;min-width:0}.onto-space-search{display:flex;gap:7px;margin-bottom:12px}.onto-space-summary{border-top:1px solid var(--dsw-alias-border-l1);padding-top:14px;margin-top:20px}.onto-space-context-chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.onto-space-context-chip{background:var(--dsw-alias-interactive-bg-hover);border:1px solid var(--dsw-alias-border-l1);border-radius:6px;padding:4px 7px;display:flex;align-items:center;gap:7px;font-size:12px}.onto-space-context-chip span{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.onto-space-context-chip button{background:transparent;border:0;font:inherit;padding:0 3px}.onto-space-pagination{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:15px;font-size:12px}.onto-space-block{background:var(--dsw-alias-interactive-bg-hover);border-radius:8px;padding:12px;margin-top:12px}.onto-space-block p{margin:0}.onto-space-label{display:inline-flex;font-size:11px;color:var(--dsw-alias-label-tertiary);margin-left:8px}.onto-space-opening{background:transparent;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:7px 10px;cursor:pointer}.onto-space-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.onto-space-panel button:focus-visible,.onto-space-panel input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.onto-space-doc-list{padding-left:20px;font-size:13px}.onto-space-doc-list li{margin:8px 0}`;
 
@@ -115,6 +182,7 @@ window.__ModuleLoader__.load({
       return h('pre', null, body);
     }
     function SpacePanel({ ontoSessionId: sessionId }) {
+      const [setup, setSetup] = React.useState(false);
       const [state, setState] = React.useState({ selected: null, context: null });
       const [tab, setTab] = React.useState('overview');
       const [data, setData] = React.useState(null);
@@ -219,6 +287,9 @@ window.__ModuleLoader__.load({
           template ? h('div', { className: 'onto-space-pagination' }, button('←', () => setFirst(Math.max(0, first - 25)), { disabled: busy || first === 0 }), h('span', null, 'Страница ' + (first / 25 + 1)), button('→', () => setFirst(first + 25), { disabled: busy || data.items.length < 25 })) : null);
       }
       return h('div', { className: 'onto-space-panel' }, h('style', null, panelStyles),
+        h('style', null, connectionStyles),
+        h('div', { className: 'onto-connection-toolbar' }, button(setup ? '← Пространство' : 'Подключение Onto', () => setSetup(!setup))),
+        setup ? h(ConnectionSetup, { onConnected: () => { setSetup(false); setRefresh(value => value + 1); } }) : h(React.Fragment, null,
         h('div', { className: 'onto-space-head' }, h('div', null, h('h2', null, state.selected?.name || 'Пространство Onto'), h('div', { className: 'onto-space-muted' }, 'Выбор и контекст только для этого чата')), button('Обновить', () => setRefresh(value => value + 1), { disabled: busy || loading })),
         !state.selected ? h('div', { className: 'onto-space-empty' }, 'Выбери пространство в переключателе Onto над полем ввода.') : h(React.Fragment, null,
           h('div', { className: 'onto-space-tabs', role: 'tablist', 'aria-label': 'Разделы пространства' }, ...[['overview', 'Обзор'], ['agents', 'Агенты'], ['memory', 'Память'], ['objects', 'Объекты']].map(([id, name]) =>
@@ -231,7 +302,7 @@ window.__ModuleLoader__.load({
           h('section', { className: 'onto-space-summary' }, h('h3', null, 'Контекст этого чата'), h(ContextChips, { context: state.context, disabled: busy, onRemove: item => mutation('remove', { kind: item.kind, id: item.id }) }),
             contextEntries(state.context).length ? h('div', { className: 'onto-space-muted' }, 'Материалы подключены. Напиши задачу в чат.') : h('div', { className: 'onto-space-muted' }, 'Пока ничего не подключено.'))),
         busy ? h('div', { className: 'onto-space-muted', role: 'status' }, 'Читаю и подключаю материалы…') : null,
-        error ? h('div', { className: 'onto-space-error', role: 'alert' }, error, button('Повторить', () => { setError(''); setRefresh(value => value + 1); })) : null);
+        error ? h('div', { className: 'onto-space-error', role: 'alert' }, error, button('Повторить', () => { setError(''); setRefresh(value => value + 1); })) : null));
     }
     function registerSpacePanel(ctx) {
       const id = 'dsh-onto-space-panel/panel';

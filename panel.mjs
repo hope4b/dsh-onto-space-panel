@@ -47,7 +47,7 @@ export function createContextStore(directory, selections) {
     selections.get(id); // Shared session-key validation.
     return join(directory, id + '.json');
   };
-  const empty = realm_id => ({ realm_id, revision: 0, declaration: null, agent: null, memories: [], objects: [] });
+  const empty = (realm_id, connection_id = '') => ({ realm_id, connection_id, revision: 0, declaration: null, agent: null, memories: [], objects: [] });
   return {
     get(id) {
       const selected = selections.get(id);
@@ -57,12 +57,12 @@ export function createContextStore(directory, selections) {
         catch (error) { if (error.code !== 'ENOENT') throw error; }
       }
       const previous = cache.get(id);
-      if (!previous || previous.realm_id !== selected.realm_id) return empty(selected.realm_id);
+      if (!previous || previous.realm_id !== selected.realm_id || (previous.connection_id || '') !== (selected.connection_id || '')) return empty(selected.realm_id, selected.connection_id);
       return structuredClone(previous);
     },
     set(id, state, expectedRealm, expectedRevision) {
       const current = this.get(id);
-      if (current.realm_id !== expectedRealm || current.revision !== expectedRevision) throw new Error('Контекст или пространство изменились. Обнови панель и повтори выбор.');
+      if (current.realm_id !== expectedRealm || current.revision !== expectedRevision || (current.connection_id || '') !== (state.connection_id || '')) throw new Error('Контекст или пространство изменились. Обнови панель и повтори выбор.');
       const next = { ...state, realm_id: expectedRealm, revision: current.revision + 1 };
       if (Buffer.byteLength(JSON.stringify(next), 'utf8') > 500000) throw new Error('В контексте слишком много материалов. Отключи часть памяти.');
       mkdirSync(directory, { recursive: true });

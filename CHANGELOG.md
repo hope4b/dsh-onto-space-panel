@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+- First-use Onto connection form with endpoint, masked API key and access check.
+- Reuse existing Harness MCP connections; restore panel-managed connections on startup.
+- Store keys through Harness's credential provider and keep configuration per profile.
+- Show inline connection errors without exposing server error text or keys.
+- Invalidate previous selections and attached context when the server or account changes.
+- Parse realm lists returned as plain MCP text as well as structured content.
+
 ## 1.1.1
 
 - First public release as `dsh-onto-space-panel`.

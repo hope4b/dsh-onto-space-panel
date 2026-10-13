@@ -6,6 +6,8 @@ the active context remains visible above the composer.
 
 ## Features
 
+- Connect to Onto on first use: enter your MCP endpoint and API key, verify
+  access, then select a space. Reuse an existing Harness connection automatically.
 - Search and select available Onto spaces.
 - Open the space panel with **Обзор**.
 - Read an accepted/current space declaration and attach it to the chat.
@@ -25,8 +27,10 @@ it does not launch a separate agent process or external agent broker.
 ## Requirements
 
 - DeepSeek Harness with its Web UI or Desktop application.
-- An existing authenticated Onto MCP connection named **`onto`**. This package
-  does not create an MCP connection, include an API key or connect to a fixed host.
+- Your Onto MCP endpoint URL and personal API key, or an existing authenticated
+  Harness MCP connection named **`onto`**.
+- Harness's writable credential provider for the first-use setup form. Standard
+  local profiles use `@deepseek-ai/dsh-credentials-local`.
 - The connection must expose `list_available_realms`, `about_realm`,
   `list_realm_agents`, `get_realm_agent`, `search_memory_artifacts`,
   `get_memory_artifact`, `get_memory_artifact_by_path`, `search_templates`,
@@ -42,7 +46,7 @@ Download the package `.tgz` from the project's release and install it into a
 Web-capable profile. For example:
 
 ```sh
-dsh plugin --profile web add ./dsh-onto-space-panel-1.1.1.tgz
+dsh plugin --profile web add ./dsh-onto-space-panel-1.2.0.tgz
 ```
 
 Release downloads: https://github.com/hope4b/dsh-onto-space-panel/releases
@@ -51,7 +55,7 @@ You can also install the tagged GitHub source, which already contains the built
 browser entry point and has no install-time build script:
 
 ```sh
-dsh plugin --profile web add github:hope4b/dsh-onto-space-panel#v1.1.1
+dsh plugin --profile web add github:hope4b/dsh-onto-space-panel#v1.2.0
 ```
 
 In Desktop, use **Plugins** to install the downloaded bundle where supported by
@@ -69,9 +73,44 @@ the `×` next to its context label.
 
 ## Connect Onto MCP
 
-The panel currently has no connection-settings form. Configure the Onto MCP
-server in Harness, then the panel uses that connection automatically.
-If your profile already has a working server named `onto`, skip this setup.
+### First-use setup (recommended)
+
+1. Install the plugin and restart Harness.
+2. Click **Onto → Подключить** above the composer.
+3. Enter your MCP endpoint URL and personal API key, then press **Подключить**.
+4. The plugin checks access with `list_available_realms` before saving. After
+   success, select a space from the list. An empty list means the connection
+   works but no accessible spaces were returned.
+
+Obtain the endpoint and key from your Onto administrator. The form uses HTTPS
+and the `X-Onto-Api-Key` header; localhost HTTP is supported for development.
+It requires a direct MCP endpoint, without credentials or query parameters in
+the URL. Authentication redirects are rejected.
+
+The connection belongs to the active Harness profile. Keys are stored through
+Harness's credential provider, not in plugin configuration, browser storage or
+chat messages. With the standard local provider, the managed credential file is
+`$DSH_HOME/.credentials.yaml`. This is local credential storage, not a claim of
+OS keychain encryption. The server address and credential reference are stored
+under `$DSH_HOME/storages/onto-connections/`, keyed by the profile location.
+The plugin restores its own MCP connection on startup without editing profile YAML.
+
+Open **Подключение** in the space picker, or **Подключение Onto** in the side
+panel, to update a connection created by the plugin. A blank key reuses the saved
+key only when the endpoint stays the same. Changing the endpoint or account key
+requires choosing spaces and attaching context again; old chat context is not
+automatically applied to the new connection.
+
+If Harness already provides a server named `onto`, the plugin reuses it and
+skips onboarding. Those external settings remain managed in Harness; the panel
+does not overwrite or migrate that connection. A configured but unavailable
+connection is shown as configured, with errors when loading spaces.
+
+### Manual Harness configuration (fallback)
+
+Use this when your deployment manages MCP centrally or does not provide a writable
+credential provider. If the profile already has an Onto connection, do not add
+a second one.
 
 1. Obtain your Onto **MCP endpoint URL** and personal API key from your Onto
    administrator. Use the MCP endpoint, not the ordinary Onto website URL.
@@ -133,7 +172,7 @@ The transport and environment-variable syntax follow the official
 
 ## Privacy and context
 
-The plugin makes read-only Onto calls through your existing MCP connection.
+The plugin makes read-only Onto calls through Harness's MCP client.
 It does not publish Onto data or perform artifact lifecycle mutations.
 Attached documents are sent to the model used by your Harness chat as context.
 
