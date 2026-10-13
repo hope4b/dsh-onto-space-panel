@@ -1,0 +1,62 @@
+{
+  "name": "dsh-onto-space-panel",
+  "version": "1.1.1",
+  "description": "Onto space navigation, resident agents and explicit memory context for DeepSeek Harness.",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./client": "./client.js"
+  },
+  "files": [
+    "index.mjs",
+    "panel.mjs",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "onto",
+    "mcp",
+    "agent-memory"
+  ],
+  "scripts": {
+    "check": "node --check index.mjs && node --check panel.mjs && node --check client.js",
+    "test": "node --test test/*.test.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-chat",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ],
+      "external": [
+        "react"
+      ]
+    }
+  },
+  "repository": {
+    "url": "https://github.com/hope4b/dsh-onto-space-panel.git",
+    "type": "git"
+  },
+  "homepage": "https://github.com/hope4b/dsh-onto-space-panel#readme",
+  "bugs": {
+    "url": "https://github.com/hope4b/dsh-onto-space-panel/issues"
+  }
+}
