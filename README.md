@@ -67,6 +67,70 @@ above the composer and press **Обзор** to open its panel. Use **В конт
 attach a declaration or memory artifact. A role or material can be removed using
 the `×` next to its context label.
 
+## Connect Onto MCP
+
+The panel currently has no connection-settings form. Configure the Onto MCP
+server in Harness, then the panel uses that connection automatically.
+If your profile already has a working server named `onto`, skip this setup.
+
+1. Obtain your Onto **MCP endpoint URL** and personal API key from your Onto
+   administrator. Use the MCP endpoint, not the ordinary Onto website URL.
+2. Open the active profile's `cordis.patch.yml`: normally
+   `~/.dsh/profiles/web/cordis.patch.yml` for Web or
+   `%USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml` for Windows Desktop.
+   A custom `DSH_HOME` changes the `.dsh` location.
+3. Append the following patch, replacing the placeholder URL. If an Onto entry
+   already exists, update it instead of creating a duplicate. The server name
+   must be exactly `onto`.
+
+```yaml
+- insert:
+    - id: mcp-onto
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: onto
+        transport: streamable-http
+        url: https://YOUR-ONTO-MCP-HOST/mcp
+        headers:
+          X-Onto-Api-Key: !!js process.env.ONTO_API_KEY
+```
+
+This example uses Onto's `X-Onto-Api-Key` header. Confirm the authentication
+scheme with your server administrator if your deployment differs.
+A copy is available in [examples/onto-mcp.patch.yml](examples/onto-mcp.patch.yml).
+
+4. Set `ONTO_API_KEY` in the environment of the process that starts Harness.
+   For Web on Windows, start it from the same PowerShell window:
+
+```powershell
+$env:ONTO_API_KEY = 'YOUR_PERSONAL_API_KEY'
+dsh --profile web
+```
+
+For Windows Desktop, fully quit Harness first, set the variable above, then
+launch the executable from that same PowerShell window. For the default installer
+location:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\DeepSeek Harness.exe"
+```
+
+Launching via an existing desktop shortcut does not inherit a variable set only
+in this PowerShell window. The variable must be available on every launch.
+Enter your real key locally; do not commit it or share terminal history containing it.
+
+5. Open the space selector above the composer. Your accessible spaces should
+   appear. You can also ask the model to call `mcp__onto__list_available_realms`.
+
+If connection fails, check the endpoint and network access first. A `401` or
+`403` response usually indicates authentication or access rights. If the tools
+work in chat but the panel cannot find them, check that `serverName` is `onto`.
+Missing agent or memory tools affect those sections separately; an empty list
+can also mean your account has no access to those resources.
+
+The transport and environment-variable syntax follow the official
+[Harness MCP client configuration](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-client/README.md#minimal-configuration).
+
 ## Privacy and context
 
 The plugin makes read-only Onto calls through your existing MCP connection.

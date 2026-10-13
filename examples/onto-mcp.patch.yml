@@ -1,0 +1,12 @@
+# Append to the active Harness profile's cordis.patch.yml.
+# Replace the URL and provide ONTO_API_KEY in the Harness process environment.
+# Reuse an existing server named onto instead of registering a second one.
+- insert:
+    - id: mcp-onto
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: onto
+        transport: streamable-http
+        url: https://YOUR-ONTO-MCP-HOST/mcp
+        headers:
+          X-Onto-Api-Key: !!js process.env.ONTO_API_KEY
